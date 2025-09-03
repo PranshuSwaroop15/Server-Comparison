@@ -1,0 +1,99 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+repositories { mavenCentral() }
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(17) }
+}
+
+/**
+ * Define three source sets. No manual classpath surgery needed.
+ * Gradle will create:
+ *  - singleImplementation, singleRuntimeOnly, singleRuntimeClasspath, etc.
+ *  - multiImplementation, ...
+ *  - loopImplementation, ...
+ */
+sourceSets {
+    single {
+        java.srcDirs = ['single-threaded/src/main/java']
+        resources.srcDirs = []
+    }
+    multi {
+        java.srcDirs = ['multi-threaded/src/main/java']
+        resources.srcDirs = []
+    }
+    loop {
+        java.srcDirs = ['threadloop/src/main/java']
+        resources.srcDirs = []
+    }
+}
+
+/**
+ * If you add common deps later (e.g., logging), put them in `implementation`
+ * and extend the per-sourceSet configurations from it.
+ * (Not required if you have no external deps.)
+ */
+configurations {
+    singleImplementation.extendsFrom implementation
+    multiImplementation.extendsFrom implementation
+    loopImplementation.extendsFrom implementation
+}
+
+/* ---------- Run tasks ---------- */
+tasks.register('runSingle', JavaExec) {
+    group = 'application'
+    description = 'Run the single-threaded server'
+    classpath = sourceSets.single.runtimeClasspath
+    mainClass = 'com.example.single.SingleServer'
+    args = [project.findProperty('port') ?: '8081']
+}
+
+tasks.register('runMulti', JavaExec) {
+    group = 'application'
+    description = 'Run the multi-threaded server'
+    classpath = sourceSets.multi.runtimeClasspath
+    mainClass = 'com.example.multi.MultiServer'
+    def port = project.findProperty('port') ?: '8082'
+    def threads = project.findProperty('threads') ?: "${Runtime.runtime.availableProcessors()}"
+    args = [port, threads]
+}
+
+tasks.register('runLoop', JavaExec) {
+    group = 'application'
+    description = 'Run the NIO threadloop server'
+    classpath = sourceSets.loop.runtimeClasspath
+    mainClass = 'com.example.loop.LoopServer'
+    args = [project.findProperty('port') ?: '8083']
+}
+
+/* ---------- Jars for each server (thin jars) ---------- */
+tasks.register('jarSingle', Jar) {
+    group = 'build'
+    archiveBaseName = 'single-threaded'
+    from sourceSets.single.output
+    manifest { attributes 'Main-Class': 'com.example.single.SingleServer' }
+}
+
+tasks.register('jarMulti', Jar) {
+    group = 'build'
+    archiveBaseName = 'multi-threaded'
+    from sourceSets.multi.output
+    manifest { attributes 'Main-Class': 'com.example.multi.MultiServer' }
+}
+
+tasks.register('jarLoop', Jar) {
+    group = 'build'
+    archiveBaseName = 'threadloop'
+    from sourceSets.loop.output
+    manifest { attributes 'Main-Class': 'com.example.loop.LoopServer' }
+}
+
+tasks.register('jarAll') {
+    group = 'build'
+    dependsOn 'jarSingle', 'jarMulti', 'jarLoop'
+}
+
+tasks.named('build') { dependsOn 'jarAll' }
